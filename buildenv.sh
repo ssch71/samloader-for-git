@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# UN1CA 환경 변수 백업 및 의존성 로드
-#source "$SRC_DIR/scripts/utils/firmware_utils.sh" || exit 1
-source "$TOOLS_DIR/venv/bin/activate" || exit 1
-
 # 원래 UN1CA는 내부 환경변수($SOURCE_FIRMWARE 등)를 쓰지만, 
 # 깃허브 액션 매트릭스에서 주입한 하드코딩 문자열을 우선 파싱하도록 변경
 if [ "$#" -gt 0 ]; then
