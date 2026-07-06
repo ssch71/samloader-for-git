@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [
-          "SM-L300/KOO/RFAX60RJHSL"
+          "SM-L300"
         ]
 
     steps:
