@@ -13,9 +13,7 @@ jobs:
     strategy:
       matrix:
         # 다운로드할 펌웨어 타겟들을 배열로 지정 (원하는 만큼 추가 가능)
-        target: [
-          "SM-L300/KOO/RFAX60RJHSL"
-        ]
+        target: ["download"]
 
     steps:
       - name: Checkout repo
