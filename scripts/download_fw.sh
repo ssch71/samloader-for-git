@@ -1,89 +1,59 @@
 #!/bin/bash
 
-# ==========================================
-# 1. 경로 및 환경 설정 (본인 환경에 맞게 수정)
-# ==========================================
-BASE_DIR="/path/to/your/workdir"      # 기본 작업 디렉토리
-ODIN_DIR="$BASE_DIR/odin"             # 다운로드된 파일이 저장될 경로
-OUT_DIR="$BASE_DIR/out"               # samloader 실행 로그 등이 남을 임시 경로
+# 외부 의존성(source) 다 걷어내고 독립 실행
+INPUT_STR="$1"
 
-SRC_DIR="$BASE_DIR/scripts"
-TOOLS_DIR="$BASE_DIR/tools"
+if [ -z "$INPUT_STR" ]; then
+    INPUT_STR="SM-L300/KOO/RFAX60RJHSL"
+fi
 
-# 의존성 로드 및 가상환경 활성화
-source "$SRC_DIR/scripts/utils/firmware_utils.sh" || exit 1
-source "$TOOLS_DIR/venv/bin/activate" || exit 1
+echo "[-] Target Firmware Input: $INPUT_STR"
 
-# ==========================================
-# 2. 다운로드 대상 정의 (예시 데이터)
-# ==========================================
-# 파싱 단계를 줄이기 위해 [모델:CSC] 형식 또는 파싱 함수가 지원하는 형식의 배열 정의
-FIRMWARES="SM-L300/KOO/RFAX60RJHSL" 
+# 슬래시(/) 기준으로 문자열 분리
+MODEL="$(cut -d "/" -f 1 -s <<< "$INPUT_STR")"
+CSC="$(cut -d "/" -f 2 -s <<< "$INPUT_STR")"
+THIRD="$(cut -d "/" -f 3 -s <<< "$INPUT_STR")"
 
-# samloader에 필요한 부가 정보가 있다면 설정 (필요 없으면 비워두기)
+if [ ! "$MODEL" ] || [ ! "$CSC" ]; then
+    echo "[!] Invalid format. Expected: MODEL/CSC/VERSION"
+    exit 1
+fi
+
+# samloader 세션 유지용 기기 식별값 가공
 IMEI=""
 SERIAL_NO=""
 
-# ==========================================
-# 3. 순수 다운로드 루프
-# ==========================================
-for i in "${FIRMWARES[@]}"; do
-    # firmware_utils.sh 내의 함수를 통해 MODEL, CSC 변수 추출
-    PARSE_FIRMWARE_STRING "$i" || exit 1
+if [[ "${#THIRD}" == "11" ]] && [[ "$THIRD" == "R"* ]]; then
+    SERIAL_NO="$THIRD"
+elif [[ "${#THIRD}" -ge "8" ]] && [[ "${#THIRD}" -le "15" ]] && [[ "$THIRD" =~ ^[+-]?[0-9]+$ ]]; then
+    IMEI="$THIRD"
+else
+    # 빌드 네임이 들어온 경우 samloader 우회용 8자리 더미 TAC 주입
+    IMEI="35234512"
+fi
 
-    echo "[-] Processing $MODEL ($CSC)..."
+echo "[+] Target Parsed -> Model: $MODEL, CSC: $CSC, IMEI: $IMEI, SN: $SERIAL_NO"
 
-    # 다운로드 경로 생성 및 기존 파일 정리
-    TARGET_DOWNLOAD_DIR="$ODIN_DIR/${MODEL}_${CSC}"
-    rm -rf "$TARGET_DOWNLOAD_DIR"
-    mkdir -p "$TARGET_DOWNLOAD_DIR"
-    mkdir -p "$OUT_DIR"
+# 경로 설정 폴백 (환경 변수 없을 때를 대비)
+[ -z "$ODIN_DIR" ] && ODIN_DIR="odin"
+[ -z "$OUT_DIR" ] && OUT_DIR="out"
 
-    echo "[-] Downloading firmware via samloader..."
-    
-    # samloader 실행 (지정된 OUT_DIR에서 실행하여 로그 분리)
-    (
-        cd "$OUT_DIR" || exit 1
-        samloader -m "$MODEL" \
-                  -r "$CSC" \
-                  -i "$IMEI" \
-                  -s "$SERIAL_NO" \
-                  download -O "$TARGET_DOWNLOAD_DIR" 1> /dev/null
-    )
+TARGET_DOWNLOAD_DIR="$ODIN_DIR/${MODEL}_${CSC}"
+rm -rf "$TARGET_DOWNLOAD_DIR"
+mkdir -p "$TARGET_DOWNLOAD_DIR"
 
-    # 다운로드 결과 확인 (ZIP 파일 존재 여부 체크)
-    ZIP_FILE="$(find "$TARGET_DOWNLOAD_DIR" -name "*.zip" | sort -r | head -n 1)"
-    if [ ! "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
-        echo "[!] Download failed for $MODEL ($CSC)"
-        exit 1
-    fi
+echo "[-] Executing samloader..."
+(
+    cd "$OUT_DIR" || exit 1
+    samloader -m "$MODEL" -r "$CSC" -i "$IMEI" -s "$SERIAL_NO" download -O "../$TARGET_DOWNLOAD_DIR" 1> /dev/null
+)
 
-    echo "[+] Successfully downloaded: $(basename "$ZIP_FILE")"
-done
+# 최종 ZIP 확인
+ZIP_FILE="$(find "$TARGET_DOWNLOAD_DIR" -name "*.zip" | sort -r | head -n 1)"
+if [ ! "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
+    echo "[!] Download failed!"
+    exit 1
+fi
 
-    if [ ! "$MODEL" ] || [ ! "$CSC" ]; then
-        echo "[!] Invalid format. Expected: MODEL/CSC/VERSION"
-        continue
-    fi
-
-    TARGET_DOWNLOAD_DIR="$ODIN_DIR/${MODEL}_${CSC}"
-    rm -rf "$TARGET_DOWNLOAD_DIR"
-    mkdir -p "$TARGET_DOWNLOAD_DIR"
-
-    echo "[-] Downloading stock firmware via samloader..."
-    (
-        cd "$OUT_DIR" || exit 1
-        samloader -m "$MODEL" -r "$CSC" -i "$IMEI" -s "$SERIAL_NO" download -O "$TARGET_DOWNLOAD_DIR" 1> /dev/null
-    )
-
-    ZIP_FILE="$(find "$TARGET_DOWNLOAD_DIR" -name "*.zip" | sort -r | head -n 1)"
-    if [ ! "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
-        echo "[!] Download failed for $MODEL ($CSC)"
-        exit 1
-    fi
-
-    echo "[+] Successfully downloaded: $(basename "$ZIP_FILE")"
-done
-
-deactivate
+echo "[+] Successfully downloaded: $(basename "$ZIP_FILE")"
 exit 0
