@@ -10,6 +10,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # 다운로드할 펌웨어 타겟들을 배열로 지정 (원하는 만큼 추가 가능)
+        target: [
+          "SM-L300/KOO/RFAX60RJHSL"
+        ]
 
     steps:
       - name: Checkout repo
@@ -17,6 +23,7 @@ jobs:
         with:
           submodules: 'recursive'
 
+      # 용량 확보 단계 (기존 유지)
       - name: Free disk space (1/3)
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -33,14 +40,25 @@ jobs:
         with:
           retain: 'compiler_cmake'
 
+      # 펌웨어 다운로드 (매트릭스의 target 인자를 주입)
       - name: Download stock firmwares
         run: |
-          source ./buildenv.sh ${{ matrix.target }}
-          ./scripts/download_fw.sh
+          source ./buildenv.sh "${{ matrix.target }}"
+          chmod +x ./scripts/download_fw.sh
+          ./scripts/download_fw.sh "${{ matrix.target }}"
 
+      # GoFile 업로드 (경로 수정)
       - name: Upload to GoFile
         run: |
-          ZIP_FILE=$(find out -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          # 스크립트 내부에서 odin/ 폴더 하위에 생성하므로 전체 하위 경로에서 .zip 탐색
+          ZIP_FILE=$(find odin -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "[!] Zip file not found!"
+            exit 1
+          fi
+
+          echo "Found zip file: $ZIP_FILE"
 
           RESPONSE=$(curl -s -F "file=@$ZIP_FILE" -F "token=${{ secrets.GOFILE_TOKEN }}" -F "folderId=${{ secrets.GOFILE_FOLDER_ID }}" "https://upload-eu-par.gofile.io/uploadFile")
 
@@ -51,4 +69,4 @@ jobs:
           md5sum "$ZIP_FILE"
 
           echo "SHA256:"
-          sha256sum "$ZIP_FILE"    
+          sha256sum "$ZIP_FILE"
