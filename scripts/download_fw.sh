@@ -1,8 +1,3 @@
-#!/usr/bin/env bash
-# Copyright (c) 2025 Salvo Giangreco
-# SPDX-License-Identifier: GPL-3.0-or-later
-
-# [
 source "$SRC_DIR/scripts/utils/firmware_utils.sh" || exit 1
 source "$TOOLS_DIR/venv/bin/activate" || exit 1
 
