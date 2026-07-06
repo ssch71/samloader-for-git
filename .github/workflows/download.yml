@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         # 다운로드할 펌웨어 타겟들을 배열로 지정 (원하는 만큼 추가 가능)
-        target: ["download"]
+        target: [download]
 
     steps:
       - name: Checkout repo
