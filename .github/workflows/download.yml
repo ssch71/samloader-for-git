@@ -1,4 +1,4 @@
-name: Download
+name: Download Firmware (UN1CA Env)
 
 on:
   workflow_dispatch:
@@ -10,12 +10,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+
     strategy:
+      fail-fast: false
       matrix:
-        # 다운로드할 펌웨어 정보를 여기에 정확히 적어줍니다.
-        target: [
-          "SM-L300/KOO/RFAX60RJHSL"
-        ]
+        # UN1CA 환경 구동을 위한 기기 타겟 정의 (기본 환경 세팅용)
+        target: [dm1q]
 
     steps:
       - name: Checkout repo
@@ -23,7 +23,7 @@ jobs:
         with:
           submodules: 'recursive'
 
-      # 용량 확보 단계 (기존 유지)
+      # 용량 확보 (기존 UN1CA 로직 유지)
       - name: Free disk space (1/3)
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -40,29 +40,35 @@ jobs:
         with:
           retain: 'compiler_cmake'
 
-            # Python 및 samloader 의존성 수동 구축
-      - name: Set up Python & Dependencies
+      # UN1CA 빌드 환경 구축 (이 단계에서 패키지 및 samloader venv가 알아서 생성됨)
+      - name: Set up build environment
         run: |
-          python3 -m venv tools/venv
-          source tools/venv/bin/activate
-          pip install --upgrade pip
-          
-          # 공식 samloader 및 암호화에 필요한 의존성 설치
-          pip install samloader pycryptodome requests
-          
-          # 만약 레포지토리 내부에 samloader 소스가 포함되어 있는 형태라면 
-          # 아래 주석을 풀고 해당 폴더로 이동해 설치해야 할 수도 있음
-          # pip install .
+          sudo apt update
+          DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
+            7zip attr ccache clang ffmpeg \
+            libbrotli-dev libgtest-dev libprotobuf-dev libunwind-dev libpcre2-dev \
+            libzstd-dev linux-modules-extra-$(uname -r) lld protobuf-compiler webp
+          sudo modprobe erofs f2fs
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # 펌웨어 다운로드 수행
+      # UN1CA 툴 체인 빌드 (samloader 등 가상환경 구동에 필수적인 기본 단계)
+      - name: Build dependencies
+        run: |
+          source ./buildenv.sh ${{ matrix.target }}
+          ./scripts/build_dependencies.sh
+
+      # 펌웨어 다운로드 실행 (원하는 펌웨어 형식을 인자로 주입)
       - name: Download stock firmwares
         run: |
+          source ./buildenv.sh ${{ matrix.target }}
           chmod +x ./scripts/download_fw.sh
-          ./scripts/download_fw.sh "${{ matrix.target }}"
+          ./scripts/download_fw.sh "SM-L300/KOO/RFAX60RJHSL"
 
-      # GoFile 업로드
+      # 고파일 업로드 (UN1CA의 $ODIN_DIR 구조 반영하여 out 내부 전체 서치)
       - name: Upload to GoFile
         run: |
+          # UN1CA의 구조상 odin/ 폴더 내부 세부 경로에 저장됨
           ZIP_FILE=$(find odin -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
